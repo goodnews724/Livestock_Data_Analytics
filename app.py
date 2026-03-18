@@ -362,14 +362,14 @@ df2_g = (
 )
 
 if not df2_g.empty:
-    last_p  = df2_g["period"].max()
+    today_p  = pd.Timestamp(date.today().replace(day=1))   # 이번 달 1일
     n_months = {"최근 3개월": 3, "최근 1년": 12, "최근 5년": 60}[period2]
-    first_p  = last_p - pd.DateOffset(months=n_months - 1)
+    first_p  = today_p - pd.DateOffset(months=n_months - 1)
     df2_g    = df2_g[df2_g["period"] >= first_p]
 
     # 전체 월 범위 생성 → 빈 월은 NaN (datetime 축 정렬용)
     full_range = pd.DataFrame({
-        "period": pd.date_range(first_p, last_p, freq="MS")
+        "period": pd.date_range(first_p, today_p, freq="MS")
     })
     df2_g = full_range.merge(df2_g, on="period", how="left")
     df2_g["label"] = df2_g["period"].dt.strftime("%y.%m")
