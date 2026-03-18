@@ -454,21 +454,20 @@ else:
         .reset_index()
     )
 
-    # 국가별 기준색 할당, 품목별 투명도 단계
+    # 국가별 기준색 할당, 품목별 투명도 단계 (모두 실선, 점점 연하게)
     def hex_rgba(hex_color: str, alpha: float) -> str:
         h = hex_color.lstrip("#")
         r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
         return f"rgba({r},{g},{b},{alpha})"
 
     country_base = {c: PALETTE[i % len(PALETTE)] for i, c in enumerate(countries3)}
-    # 품목 수에 따라 투명도 분배 (첫 품목=진하게, 이후 점점 연하게)
+    # 품목 수에 상관없이 1.0 → 0.35 범위를 균등 분배
     n_items = len(items3)
     if n_items == 1:
         alphas = [1.0]
     else:
-        alphas = [round(1.0 - 0.55 * j / (n_items - 1), 2) for j in range(n_items)]
+        alphas = [round(1.0 - 0.65 * j / (n_items - 1), 2) for j in range(n_items)]
     item_alpha = {it: alphas[j] for j, it in enumerate(items3)}
-    item_dash  = {it: ("solid" if j == 0 else "dot") for j, it in enumerate(items3)}
 
     fig3  = go.Figure()
     combos = [(c, it) for c in countries3 for it in items3]
@@ -484,7 +483,7 @@ else:
             x=[f"{m:02d}" for m in sub["month"]], y=sub["ton"],
             name=f"{c} / {it}",
             mode="lines+markers",
-            line=dict(color=color, width=width, dash=item_dash[it]),
+            line=dict(color=color, width=width),
             marker=dict(size=5, color=color),
             hovertemplate=f"{c} / {it}<br>%{{x}}월: %{{y:,.1f}}t<extra></extra>",
         ))
