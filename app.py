@@ -319,11 +319,13 @@ if pd.notna(avg_val):
 fig1.update_layout(
     **LAYOUT_BASE,
     xaxis=dict(tickmode="array", tickvals=MONTH_LABELS, ticktext=MONTH_LABELS,
-               title="월", fixedrange=True),
-    yaxis=dict(title="검역량 (톤)", fixedrange=True),
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+               title="월", title_font_size=14, tickfont_size=13, fixedrange=True),
+    yaxis=dict(title="검역량 (톤)", title_font_size=14, tickfont_size=13, fixedrange=True),
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0,
+                font_size=13),
+    font=dict(size=13),
     margin=dict(l=0, r=10, t=50, b=30),
-    height=430,
+    height=450,
 )
 st.plotly_chart(fig1, use_container_width=True, config=CFG)
 
@@ -452,20 +454,38 @@ else:
         .reset_index()
     )
 
+    # 국가별 기준색 할당, 품목별 투명도 단계
+    def hex_rgba(hex_color: str, alpha: float) -> str:
+        h = hex_color.lstrip("#")
+        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+        return f"rgba({r},{g},{b},{alpha})"
+
+    country_base = {c: PALETTE[i % len(PALETTE)] for i, c in enumerate(countries3)}
+    # 품목 수에 따라 투명도 분배 (첫 품목=진하게, 이후 점점 연하게)
+    n_items = len(items3)
+    if n_items == 1:
+        alphas = [1.0]
+    else:
+        alphas = [round(1.0 - 0.55 * j / (n_items - 1), 2) for j in range(n_items)]
+    item_alpha = {it: alphas[j] for j, it in enumerate(items3)}
+    item_dash  = {it: ("solid" if j == 0 else "dot") for j, it in enumerate(items3)}
+
     fig3  = go.Figure()
     combos = [(c, it) for c in countries3 for it in items3]
 
-    for i, (c, it) in enumerate(combos):
+    for c, it in combos:
         sub = df3_g[(df3_g["country"] == c) & (df3_g["품명"] == it)].sort_values("month")
         sub = sub[sub["ton"].notna()]
         if sub.empty:
             continue
+        color = hex_rgba(country_base[c], item_alpha[it])
+        width = 2.8 if item_alpha[it] == 1.0 else 2.0
         fig3.add_trace(go.Scatter(
             x=[f"{m:02d}" for m in sub["month"]], y=sub["ton"],
             name=f"{c} / {it}",
             mode="lines+markers",
-            line=dict(color=PALETTE[i % len(PALETTE)], width=2.2),
-            marker=dict(size=5),
+            line=dict(color=color, width=width, dash=item_dash[it]),
+            marker=dict(size=5, color=color),
             hovertemplate=f"{c} / {it}<br>%{{x}}월: %{{y:,.1f}}t<extra></extra>",
         ))
 
