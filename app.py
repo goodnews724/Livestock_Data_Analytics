@@ -48,6 +48,58 @@ MONTHS       = list(range(1, 13))
 MONTH_LABELS = [f"{m:02d}" for m in MONTHS]
 MONTH_COLS   = [f"{m}월" for m in MONTHS]   # 요약 시트 컬럼명
 
+# 국가명 오타 / 이표기 정규화
+COUNTRY_ALIASES: dict[str, str] = {
+    # 네덜란드
+    "네덜랜드": "네덜란드",
+    "화란": "네덜란드",
+    # 포르투갈
+    "포루투갈": "포르투갈",
+    "포르투칼": "포르투갈",
+    "포루투칼": "포르투갈",
+    # 캐나다
+    "카나다": "캐나다",
+    "캐나나": "캐나다",
+    # 덴마크
+    "덴말크": "덴마크",
+    # 벨기에
+    "벨지움": "벨기에",
+    "벨지에": "벨기에",
+    # 오스트리아
+    "오지리": "오스트리아",
+    # 스페인
+    "에스파냐": "스페인",
+    # 영국
+    "영국(UK)": "영국",
+    # 뉴질랜드
+    "뉴질렌드": "뉴질랜드",
+    "뉴질랜": "뉴질랜드",
+    # 아일랜드
+    "아이랜드": "아일랜드",
+    "아이얼랜드": "아일랜드",
+    # 호주
+    "오스트레일리아": "호주",
+    "호주(AUS)": "호주",
+    # 미국
+    "미국(US)": "미국",
+    "미국(USA)": "미국",
+    # 브라질
+    "브라질(BRA)": "브라질",
+    # 헝가리
+    "헝가이": "헝가리",
+    # 핀란드
+    "핀란": "핀란드",
+    # 스웨덴
+    "스웨": "스웨덴",
+    # 프랑스
+    "프랑": "프랑스",
+}
+
+
+def normalize_country(name: str) -> str:
+    s = name.strip()
+    return COUNTRY_ALIASES.get(s, s)
+
 # ── 페이지 설정 ────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="검역량 시각화",
@@ -111,8 +163,10 @@ def _load_summary_sheet(sheet_name: str, species: str) -> pd.DataFrame:
     df["연도"] = pd.to_numeric(df["연도"].str.replace("년", "", regex=False).str.strip(), errors="coerce")
     df = df[df["연도"].notna()].copy()
     df["연도"] = df["연도"].astype(int)
-    df["품명"] = df["품명"].str.strip()
-    df["country"] = df["country"].str.strip()
+    df["품명"]   = df["품명"].str.strip()
+    df["country"] = df["country"].str.strip().map(
+        lambda x: COUNTRY_ALIASES.get(x, x)
+    )
 
     for c in month_cols_present:
         df[c] = pd.to_numeric(
