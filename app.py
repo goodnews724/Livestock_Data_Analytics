@@ -363,30 +363,40 @@ df2_g = (
 
 if not df2_g.empty:
     last_p  = df2_g["period"].max()
-    months  = {"최근 3개월": 3, "최근 1년": 12, "최근 5년": 60}[period2]
-    df2_g   = df2_g[df2_g["period"] >= last_p - pd.DateOffset(months=months)]
+    n_months = {"최근 3개월": 3, "최근 1년": 12, "최근 5년": 60}[period2]
+    first_p  = last_p - pd.DateOffset(months=n_months - 1)
+    df2_g    = df2_g[df2_g["period"] >= first_p]
 
-df2_g = df2_g[df2_g["ton"].notna()]
-df2_g["label"] = df2_g["period"].dt.strftime("%y.%m")
+    # 전체 월 범위 생성 → 빈 월은 NaN (datetime 축 정렬용)
+    full_range = pd.DataFrame({
+        "period": pd.date_range(first_p, last_p, freq="MS")
+    })
+    df2_g = full_range.merge(df2_g, on="period", how="left")
+    df2_g["label"] = df2_g["period"].dt.strftime("%y.%m")
 
 if df2_g.empty:
     st.info("해당 조건의 데이터가 없습니다.")
 else:
     fig2 = go.Figure()
     fig2.add_trace(go.Scatter(
-        x=df2_g["label"], y=df2_g["ton"],
+        x=df2_g["period"], y=df2_g["ton"],
         mode="lines+markers",
         line=dict(color=COLOR_LAST, width=2.5), marker=dict(size=5),
+        connectgaps=False,          # 데이터 없는 월은 선 끊김
         fill="tozeroy", fillcolor="rgba(49,130,206,0.08)",
         name="검역량",
-        hovertemplate="%{x}  %{y:,.1f}t<extra></extra>",
+        hovertemplate="%{x|%y.%m}  %{y:,.1f}t<extra></extra>",
     ))
-    labels = df2_g["label"].tolist()
+    all_labels = df2_g["label"].tolist()
     fig2.update_layout(
         **LAYOUT_BASE,
         xaxis=dict(
-            tickmode="array", tickvals=labels, ticktext=labels,
-            tickangle=-45, title="날짜 (YY.MM)", fixedrange=True,
+            tickmode="array",
+            tickvals=df2_g["period"].tolist(),
+            ticktext=all_labels,
+            tickangle=-45,
+            title="날짜 (YY.MM)",
+            fixedrange=True,
         ),
         yaxis=dict(title="검역량 (톤)", fixedrange=True),
         margin=dict(l=0, r=10, t=30, b=70),
