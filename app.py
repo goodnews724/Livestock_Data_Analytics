@@ -224,7 +224,7 @@ hdr, rbtn = st.columns([6, 1])
 with hdr:
     st.markdown("## 📊 검역량 시각화")
 with rbtn:
-    if st.button("🔄 새로고침", use_container_width=True):
+    if st.button("🔄 새로고침", width="stretch"):
         load_all.clear()
         st.rerun()
 
@@ -326,13 +326,13 @@ fig1.update_layout(
     margin=dict(l=0, r=10, t=50, b=30),
     height=450,
 )
-st.plotly_chart(fig1, use_container_width=True, config=CFG)
+st.plotly_chart(fig1, width="stretch", config=CFG)
 
 with st.expander(f"🔍 원본 데이터 확인 ({mask1.sum()}행)", expanded=False):
     st.dataframe(
         df_all[mask1].sort_values(["year", "month"])
         [["species", "year", "month", "country", "품명", "ton"]],
-        use_container_width=True, height=250,
+        width="stretch", height=250,
     )
 
 
@@ -404,7 +404,7 @@ else:
         margin=dict(l=0, r=10, t=30, b=70),
         height=380,
     )
-    st.plotly_chart(fig2, use_container_width=True, config=CFG)
+    st.plotly_chart(fig2, width="stretch", config=CFG)
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -501,4 +501,4 @@ else:
             margin=dict(l=0, r=10, t=60, b=30),
             height=430,
         )
-        st.plotly_chart(fig3, use_container_width=True, config=CFG)
+        st.plotly_chart(fig3, width="stretch", config=CFG)
