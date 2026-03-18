@@ -213,7 +213,6 @@ LAYOUT_BASE = dict(
     plot_bgcolor="#fafafa",
     paper_bgcolor="#ffffff",
     hovermode="x unified",
-    font=dict(size=11),
 )
 
 
@@ -401,6 +400,7 @@ else:
             fixedrange=True,
         ),
         yaxis=dict(title="검역량 (톤)", fixedrange=True),
+        font=dict(size=11),
         margin=dict(l=0, r=10, t=30, b=70),
         height=380,
     )
@@ -498,6 +498,7 @@ else:
                        title="월", fixedrange=True),
             yaxis=dict(title="검역량 (톤)", fixedrange=True),
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+            font=dict(size=11),
             margin=dict(l=0, r=10, t=60, b=30),
             height=430,
         )
