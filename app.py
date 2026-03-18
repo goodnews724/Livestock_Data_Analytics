@@ -158,7 +158,6 @@ CFG = {"displayModeBar": False}
 LAYOUT_BASE = dict(
     plot_bgcolor="#fafafa",
     paper_bgcolor="#ffffff",
-    margin=dict(l=0, r=10, t=50, b=30),
     hovermode="x unified",
     font=dict(size=11),
 )
@@ -269,6 +268,7 @@ fig1.update_layout(
                title="월", fixedrange=True),
     yaxis=dict(title="검역량 (톤)", fixedrange=True),
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+    margin=dict(l=0, r=10, t=50, b=30),
     height=430,
 )
 st.plotly_chart(fig1, use_container_width=True, config=CFG)
