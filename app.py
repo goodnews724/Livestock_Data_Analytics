@@ -21,8 +21,7 @@ import streamlit as st
 from google.oauth2.service_account import Credentials
 
 # ── 설정 ──────────────────────────────────────────────────────────────────
-PORK_SHEET_ID = "14yyGCTu0c0o1fRj9Rl28aAhuf4s8DUC1o-1XrKkzNcw"
-BEEF_SHEET_ID = "1ioMr3eKMWwq-4dbBihglW5zWGaxLTBiv4l8JImlOIk4"
+SHEET_ID        = "13m-3z2LgX4BQ7JMT0dgOmKCHt_VXx71rFoSzBcMLFjE"
 PORK_SHEET_NAME = "돈육_검역량_요약"
 BEEF_SHEET_NAME = "우육_검역량_요약"
 
@@ -87,10 +86,10 @@ def _get_client() -> gspread.Client:
 
 # ── 요약 시트 로드 & melt ──────────────────────────────────────────────────
 
-def _load_summary_sheet(sheet_id: str, sheet_name: str, species: str) -> pd.DataFrame:
+def _load_summary_sheet(sheet_name: str, species: str) -> pd.DataFrame:
     """요약 시트 1개를 읽어 long-format DataFrame 반환."""
     gc = _get_client()
-    ws = gc.open_by_key(sheet_id).worksheet(sheet_name)
+    ws = gc.open_by_key(SHEET_ID).worksheet(sheet_name)
     rows = ws.get_all_values()
     if len(rows) < 2:
         return pd.DataFrame()
@@ -140,8 +139,8 @@ def _load_summary_sheet(sheet_id: str, sheet_name: str, species: str) -> pd.Data
 
 @st.cache_data(ttl=300, show_spinner=False)
 def load_all() -> pd.DataFrame:
-    pork = _load_summary_sheet(PORK_SHEET_ID, PORK_SHEET_NAME, "돈육")
-    beef = _load_summary_sheet(BEEF_SHEET_ID, BEEF_SHEET_NAME, "우육")
+    pork = _load_summary_sheet(PORK_SHEET_NAME, "돈육")
+    beef = _load_summary_sheet(BEEF_SHEET_NAME, "우육")
     df = pd.concat([pork, beef], ignore_index=True)
     # 0 또는 NaN은 데이터 없음 — NaN으로 통일
     df.loc[df["ton"] == 0, "ton"] = pd.NA
