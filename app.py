@@ -96,11 +96,13 @@ def load_raw() -> pd.DataFrame:
     df["year"]   = df["date"].str[:4].astype(int)
     df["month"]  = df["date"].str[5:7].astype(int)
     df["period"] = pd.to_datetime(df["date"] + "-01")
-    df["ton"]    = pd.to_numeric(df["month_cumulative_kg"], errors="coerce").fillna(0) / 1_000
+    # NaN 유지 — fillna(0) 하지 않음 (데이터 없는 월은 gap으로 표시)
+    df["ton"] = pd.to_numeric(df["month_cumulative_kg"], errors="coerce") / 1_000
 
     for col in ["product_category", "item_name", "country", "storage_type"]:
         if col in df.columns:
-            df[col] = df[col].str.strip().replace("", pd.NA)
+            df[col] = df[col].str.strip()
+            df[col] = df[col].replace("", pd.NA)
 
     return df
 
@@ -149,6 +151,15 @@ if df_all.empty:
 
 all_cats = sorted(df_all["product_category"].dropna().unique())
 
+# 데이터에 있는 구분 값 안내
+with st.expander("📋 데이터 구분(product_category) 실제 값 확인", expanded=False):
+    st.dataframe(
+        df_all.groupby("product_category")["ton"].agg(["count", "sum"])
+        .rename(columns={"count": "행 수", "sum": "합계(톤)"})
+        .sort_values("행 수", ascending=False),
+        use_container_width=True,
+    )
+
 
 # ══════════════════════════════════════════════════════════════════════════
 # ① 연도별 월별 비교 (최근 5년)
@@ -163,14 +174,31 @@ cntry1   = c2.selectbox("국가", sorted(df1_cat["country"].dropna().unique()), 
 df1_c    = df1_cat[df1_cat["country"] == cntry1]
 item1    = c3.selectbox("품목", sorted(df1_c["item_name"].dropna().unique()), key="item1")
 
-years5 = list(range(TODAY_YEAR - 4, TODAY_YEAR + 1))
-df1_g  = (
-    df1_c[df1_c["item_name"] == item1][df1_c["year"].isin(years5)]
-    .groupby(["year", "month"])["ton"].sum()
+years5  = list(range(TODAY_YEAR - 4, TODAY_YEAR + 1))
+mask1   = (
+    (df_all["product_category"] == cat1) &
+    (df_all["country"] == cntry1) &
+    (df_all["item_name"] == item1) &
+    (df_all["year"].isin(years5))
+)
+df1_raw = df_all[mask1]
+df1_g   = (
+    df1_raw
+    .groupby(["year", "month"])["ton"]
+    .sum(min_count=1)   # 모든 값이 NaN이면 0이 아닌 NaN 반환
     .reset_index()
 )
 
-avg_val = df1_g["ton"].mean() if not df1_g.empty else 0
+avg_val = df1_g["ton"].mean(skipna=True) if not df1_g.empty else 0
+
+# 데이터 확인용
+with st.expander(f"🔍 원본 데이터 확인 ({len(df1_raw)}행)", expanded=False):
+    st.dataframe(
+        df1_raw[["date", "source", "product_category", "item_name", "storage_type", "country", "month_cumulative_kg", "ton"]]
+        .sort_values("date"),
+        use_container_width=True,
+        height=250,
+    )
 
 fig1 = go.Figure()
 
@@ -234,9 +262,14 @@ df2_c   = df2_cat[df2_cat["country"] == cntry2]
 item2   = c3.selectbox("품목", sorted(df2_c["item_name"].dropna().unique()), key="item2")
 period2 = c4.radio("기간", ["최근 3개월", "최근 1년", "최근 5년"], key="period2")
 
+mask2 = (
+    (df_all["product_category"] == cat2) &
+    (df_all["country"] == cntry2) &
+    (df_all["item_name"] == item2)
+)
 df2_g = (
-    df2_c[df2_c["item_name"] == item2]
-    .groupby("period")["ton"].sum()
+    df_all[mask2]
+    .groupby("period")["ton"].sum(min_count=1)
     .reset_index()
     .sort_values("period")
 )
@@ -306,8 +339,15 @@ items3 = c4.multiselect(
 if not countries3 or not items3:
     st.info("국가와 품목을 각각 1개 이상 선택하세요.")
 else:
-    df3   = df3_yr[df3_yr["country"].isin(countries3) & df3_yr["item_name"].isin(items3)]
-    df3_g = df3.groupby(["month", "country", "item_name"])["ton"].sum().reset_index()
+    mask3 = (
+        (df_all["year"] == year3) &
+        (df_all["country"].isin(countries3)) &
+        (df_all["item_name"].isin(items3))
+    )
+    if cat3 != "전체":
+        mask3 &= (df_all["product_category"] == cat3)
+    df3   = df_all[mask3]
+    df3_g = df3.groupby(["month", "country", "item_name"])["ton"].sum(min_count=1).reset_index()
 
     fig3  = go.Figure()
     combos = [(c, it) for c in countries3 for it in items3]
