@@ -278,7 +278,7 @@ if df_all.empty:
 SPECIES_OPTS = ["돈육", "우육"]
 
 # 기본값 세션 초기화 (이전 세션 상태가 남아있어도 최초 방문 시 기본값 적용)
-for _k, _v in [("sp1", DEFAULT_SPECIES), ("sp2", DEFAULT_SPECIES), ("sp3", DEFAULT_SPECIES)]:
+for _k, _v in [("sp1", DEFAULT_SPECIES), ("sp2", DEFAULT_SPECIES)]:
     if _k not in st.session_state:
         st.session_state[_k] = _v
 
@@ -287,80 +287,113 @@ for _k, _v in [("sp1", DEFAULT_SPECIES), ("sp2", DEFAULT_SPECIES), ("sp3", DEFAU
 # ① 연도별 월별 비교 (연도 선택)
 # ══════════════════════════════════════════════════════════════════════════
 
-section("① 연도별 월별 비교  (비교할 연도 선택)")
+section("① 연도별 월별 비교  (연도·국가·품목 복수 선택 + 합산)")
 
-c1, c2, c3 = st.columns(3)
-sp1    = c1.selectbox("구분", SPECIES_OPTS, key="sp1")
+r1c1, r1c2 = st.columns([1, 3])
+sp1    = r1c1.selectbox("구분", SPECIES_OPTS, key="sp1")
 df1_sp = df_all[df_all["species"] == sp1]
-cnt1   = sorted(df1_sp["country"].dropna().unique())
-cntry1 = c2.selectbox("국가", cnt1, index=_idx(cnt1, DEFAULT_COUNTRY), key="cntry1")
-df1_c  = df1_sp[df1_sp["country"] == cntry1]
-items1 = sorted(df1_c["품명"].dropna().unique())
-item1  = c3.selectbox("품목", items1, index=_idx(items1, DEFAULT_ITEM), key="item1")
 
-all_years1   = sorted(df_all["year"].dropna().unique(), reverse=True)
+all_years1   = sorted(df1_sp["year"].dropna().unique(), reverse=True)
 default_yrs1 = all_years1[:min(5, len(all_years1))]
-sel_years1   = st.multiselect("비교할 연도 선택", all_years1, default=default_yrs1, key="years1")
+sel_years1   = r1c2.multiselect("연도 선택", all_years1, default=default_yrs1, key="years1")
 
-mask1 = (
-    (df_all["species"] == sp1) &
-    (df_all["country"] == cntry1) &
-    (df_all["품명"] == item1) &
-    (df_all["year"].isin(sel_years1))
-)
-df1_g = (
-    df_all[mask1]
-    .groupby(["year", "month"])["ton"]
-    .sum(min_count=1)
-    .reset_index()
-)
+cnt1_all   = sorted(df1_sp["country"].dropna().unique())
+items1_all = sorted(df1_sp["품명"].dropna().unique())
+default_cnt1  = [DEFAULT_COUNTRY] if DEFAULT_COUNTRY in cnt1_all else cnt1_all[:1]
+default_item1 = [DEFAULT_ITEM]    if DEFAULT_ITEM    in items1_all else items1_all[:1]
 
-year_color  = _year_colors(sel_years1)
-avg_val     = df1_g["ton"].mean(skipna=True) if not df1_g.empty else None
+r2c1, r2c2 = st.columns(2)
+countries1  = r2c1.multiselect("국가", cnt1_all, default=default_cnt1, key="cntry1")
+merge_cnt1  = r2c1.checkbox("국가 합산", value=False, key="merge_cnt1")
+items1      = r2c2.multiselect("품목", items1_all, default=default_item1, key="item1")
+merge_item1 = r2c2.checkbox("품목 합산", value=False, key="merge_item1")
 
-fig1 = go.Figure()
-
-for yr in sorted(sel_years1):
-    sub  = df1_g[df1_g["year"] == yr].set_index("month")
-    vals = [sub["ton"].get(m) for m in MONTHS]
-    color = year_color[yr]
-    is_latest = (yr == max(sel_years1)) if sel_years1 else False
-    text = [f"{v:,.1f}t" if pd.notna(v) and v is not None else "" for v in vals] if is_latest else []
-    fig1.add_trace(go.Scatter(
-        x=MONTH_LABELS, y=vals, name=str(yr),
-        mode="lines+markers+text" if is_latest else "lines+markers",
-        line=dict(color=color, width=3 if is_latest else 1.8),
-        marker=dict(size=6 if is_latest else 4, color=color),
-        text=text, textposition="top center", textfont=dict(size=10, color=color),
-        opacity=1.0 if is_latest else 0.75,
-    ))
-
-if avg_val is not None and pd.notna(avg_val):
-    fig1.add_hline(
-        y=avg_val, line_dash="dot", line_color=COLOR_AVG, line_width=1.5,
-        annotation_text=f"선택평균 {avg_val:,.1f}t",
-        annotation_position="bottom right",
-        annotation_font_size=10, annotation_font_color=COLOR_AVG,
+if not sel_years1 or not countries1 or not items1:
+    st.info("연도, 국가, 품목을 각각 1개 이상 선택하세요.")
+else:
+    mask1 = (
+        (df_all["species"] == sp1) &
+        (df_all["year"].isin(sel_years1)) &
+        (df_all["country"].isin(countries1)) &
+        (df_all["품명"].isin(items1))
     )
+    df1_raw = df_all[mask1].copy()
 
-fig1.update_layout(
-    **LAYOUT_BASE,
-    xaxis=dict(tickmode="array", tickvals=MONTH_LABELS, ticktext=MONTH_LABELS,
-               title="월", title_font_size=14, tickfont_size=13, fixedrange=True),
-    yaxis=dict(title="검역량 (톤)", title_font_size=14, tickfont_size=13, fixedrange=True),
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, font_size=13),
-    font=dict(size=13),
-    margin=dict(l=0, r=10, t=50, b=30),
-    height=450,
-)
-st.plotly_chart(fig1, width="stretch", config=CFG)
+    group_keys1 = ["year", "month"]
+    if not merge_cnt1:
+        group_keys1.append("country")
+    if not merge_item1:
+        group_keys1.append("품명")
+    df1_g = df1_raw.groupby(group_keys1)["ton"].sum(min_count=1).reset_index()
 
-with st.expander(f"🔍 원본 데이터 확인 ({mask1.sum()}행)", expanded=False):
-    st.dataframe(
-        df_all[mask1].sort_values(["year", "month"])
-        [["species", "year", "month", "country", "품명", "ton"]],
-        width="stretch", height=250,
+    year_color = _year_colors(sel_years1)
+
+    def _series1(df_sub, label_parts: list, yr: int) -> tuple:
+        label = " / ".join(label_parts + [str(yr)])
+        return label, df_sub, year_color[yr]
+
+    series1 = []
+    for yr in sorted(sel_years1):
+        df_yr = df1_g[df1_g["year"] == yr]
+        if merge_cnt1 and merge_item1:
+            series1.append(_series1(df_yr, ["합산"], yr))
+        elif merge_cnt1:
+            for it in items1:
+                series1.append(_series1(df_yr[df_yr["품명"] == it], [it], yr))
+        elif merge_item1:
+            for c in countries1:
+                series1.append(_series1(df_yr[df_yr["country"] == c], [c], yr))
+        else:
+            for c in countries1:
+                for it in items1:
+                    series1.append(_series1(
+                        df_yr[(df_yr["country"] == c) & (df_yr["품명"] == it)], [c, it], yr
+                    ))
+
+    fig1 = go.Figure()
+    max_yr = max(sel_years1)
+    for label, sub, color in series1:
+        sub = sub.sort_values("month")
+        yr  = int(label.rsplit("/", 1)[-1].strip())
+        is_latest = (yr == max_yr)
+        vals = [sub.set_index("month")["ton"].get(m) for m in MONTHS]
+        text = [f"{v:,.1f}t" if pd.notna(v) and v is not None else "" for v in vals] if is_latest else []
+        fig1.add_trace(go.Scatter(
+            x=MONTH_LABELS, y=vals, name=label,
+            mode="lines+markers+text" if is_latest else "lines+markers",
+            line=dict(color=color, width=3 if is_latest else 1.8),
+            marker=dict(size=6 if is_latest else 4, color=color),
+            text=text, textposition="top center", textfont=dict(size=10, color=color),
+            opacity=1.0 if is_latest else 0.75,
+        ))
+
+    avg_val = df1_g["ton"].mean(skipna=True)
+    if pd.notna(avg_val):
+        fig1.add_hline(
+            y=avg_val, line_dash="dot", line_color=COLOR_AVG, line_width=1.5,
+            annotation_text=f"선택평균 {avg_val:,.1f}t",
+            annotation_position="bottom right",
+            annotation_font_size=10, annotation_font_color=COLOR_AVG,
+        )
+
+    fig1.update_layout(
+        **LAYOUT_BASE,
+        xaxis=dict(tickmode="array", tickvals=MONTH_LABELS, ticktext=MONTH_LABELS,
+                   title="월", title_font_size=14, tickfont_size=13, fixedrange=True),
+        yaxis=dict(title="검역량 (톤)", title_font_size=14, tickfont_size=13, fixedrange=True),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, font_size=13),
+        font=dict(size=13),
+        margin=dict(l=0, r=10, t=50, b=30),
+        height=450,
     )
+    st.plotly_chart(fig1, width="stretch", config=CFG)
+
+    with st.expander(f"🔍 원본 데이터 확인 ({mask1.sum()}행)", expanded=False):
+        st.dataframe(
+            df_all[mask1].sort_values(["year", "month"])
+            [["species", "year", "month", "country", "품명", "ton"]],
+            width="stretch", height=250,
+        )
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -444,107 +477,3 @@ else:
         height=380,
     )
     st.plotly_chart(fig2, width="stretch", config=CFG)
-
-
-# ══════════════════════════════════════════════════════════════════════════
-# ③ 커스텀 그룹 비교 그래프
-# ══════════════════════════════════════════════════════════════════════════
-
-section("③ 커스텀 그룹 비교  (연도·국가·품목 복수 선택 + 합산)")
-
-c1, c2 = st.columns([1, 3])
-sp3    = c1.selectbox("구분", SPECIES_OPTS, key="sp3")
-df3_sp = df_all[df_all["species"] == sp3]
-
-all_yrs3     = sorted(df3_sp["year"].dropna().unique(), reverse=True)
-default_yrs3 = all_yrs3[:min(3, len(all_yrs3))]
-sel_years3   = c2.multiselect("연도 선택", all_yrs3, default=default_yrs3, key="years3")
-
-df3_filt   = df3_sp[df3_sp["year"].isin(sel_years3)] if sel_years3 else df3_sp
-cnt3_all   = sorted(df3_filt["country"].dropna().unique())
-items3_all = sorted(df3_filt["품명"].dropna().unique())
-
-default_cnt3  = [DEFAULT_COUNTRY] if DEFAULT_COUNTRY in cnt3_all else cnt3_all[:1]
-default_item3 = [DEFAULT_ITEM]    if DEFAULT_ITEM    in items3_all else items3_all[:1]
-
-c3, c4 = st.columns([1, 1])
-countries3  = c3.multiselect("국가", cnt3_all, default=default_cnt3, key="cnt3")
-merge_cnt3  = c3.checkbox("국가 합산", value=False, key="merge_cnt3")
-items3      = c4.multiselect("품목", items3_all, default=default_item3, key="items3")
-merge_item3 = c4.checkbox("품목 합산", value=False, key="merge_item3")
-
-if not sel_years3 or not countries3 or not items3:
-    st.info("연도, 국가, 품목을 각각 1개 이상 선택하세요.")
-else:
-    mask3 = (
-        (df_all["species"] == sp3) &
-        (df_all["year"].isin(sel_years3)) &
-        (df_all["country"].isin(countries3)) &
-        (df_all["품명"].isin(items3))
-    )
-    df3_raw = df_all[mask3].copy()
-
-    # 합산 여부에 따라 그룹 키 결정 (연도는 항상 분리)
-    group_keys = ["year", "month"]
-    if not merge_cnt3:
-        group_keys.append("country")
-    if not merge_item3:
-        group_keys.append("품명")
-
-    df3_g = df3_raw.groupby(group_keys)["ton"].sum(min_count=1).reset_index()
-
-    # 시리즈 목록 구성 — 연도별로 색상 할당
-    year_color3 = _year_colors(sel_years3)
-
-    def _series(df_sub, label_parts: list, yr: int) -> tuple:
-        label = " / ".join(label_parts + [str(yr)])
-        color = year_color3[yr]
-        return label, df_sub, color
-
-    series_list = []
-    for yr in sorted(sel_years3):
-        df_yr = df3_g[df3_g["year"] == yr]
-        if merge_cnt3 and merge_item3:
-            series_list.append(_series(df_yr, ["합산"], yr))
-        elif merge_cnt3:
-            for it in items3:
-                series_list.append(_series(df_yr[df_yr["품명"] == it], [it], yr))
-        elif merge_item3:
-            for c in countries3:
-                series_list.append(_series(df_yr[df_yr["country"] == c], [c], yr))
-        else:
-            for c in countries3:
-                for it in items3:
-                    sub = df_yr[(df_yr["country"] == c) & (df_yr["품명"] == it)]
-                    series_list.append(_series(sub, [c, it], yr))
-
-    fig3 = go.Figure()
-    for label, sub, color in series_list:
-        sub = sub.sort_values("month")
-        sub = sub[sub["ton"].notna()]
-        if sub.empty:
-            continue
-        xs = [f"{m:02d}" for m in sub["month"]]
-        fig3.add_trace(go.Scatter(
-            x=xs, y=sub["ton"],
-            name=label,
-            mode="lines+markers",
-            line=dict(color=color, width=2.5),
-            marker=dict(size=5, color=color),
-            hovertemplate=f"{label}<br>%{{x}}월: %{{y:,.1f}}t<extra></extra>",
-        ))
-
-    if not fig3.data:
-        st.info("해당 조건의 데이터가 없습니다.")
-    else:
-        fig3.update_layout(
-            **LAYOUT_BASE,
-            xaxis=dict(tickmode="array", tickvals=MONTH_LABELS, ticktext=MONTH_LABELS,
-                       title="월", fixedrange=True),
-            yaxis=dict(title="검역량 (톤)", fixedrange=True),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-            font=dict(size=11),
-            margin=dict(l=0, r=10, t=60, b=30),
-            height=450,
-        )
-        st.plotly_chart(fig3, width="stretch", config=CFG)
