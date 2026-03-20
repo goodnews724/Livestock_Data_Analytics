@@ -60,6 +60,18 @@ def _idx(lst: list, val: str) -> int:
 
 _OTHER_PALETTE = ["#38a169", "#d69e2e", "#805ad5", "#dd6b20", "#319795", "#b83280", "#2b6cb0", "#276749"]
 
+LINE_DASHES = ["solid", "dot", "dash", "dashdot", "longdash", "longdashdot"]
+
+
+def _year_style(yr: int) -> tuple:
+    """연도별 (width, opacity)."""
+    if yr == TODAY_YEAR:
+        return 3.0, 1.0
+    if yr == LAST_YEAR:
+        return 2.0, 0.85
+    return 1.5, 0.5
+
+
 def _year_colors(years: list) -> dict:
     """올해=빨강, 작년=파랑, 나머지=기타 색상."""
     result = {}
@@ -325,45 +337,52 @@ else:
         group_keys1.append("품명")
     df1_g = df1_raw.groupby(group_keys1)["ton"].sum(min_count=1).reset_index()
 
-    year_color = _year_colors(sel_years1)
+    year_color   = _year_colors(sel_years1)
+    cnt_color    = {c: PALETTE[i % len(PALETTE)] for i, c in enumerate(countries1)}
+    item_color   = {it: PALETTE[i % len(PALETTE)] for i, it in enumerate(items1)}
+    item_dash    = {it: LINE_DASHES[i % len(LINE_DASHES)] for i, it in enumerate(items1)}
 
-    def _series1(df_sub, label_parts: list, yr: int) -> tuple:
-        label = " / ".join(label_parts + [str(yr)])
-        return label, df_sub, year_color[yr]
-
+    # (label, df_sub, color, dash, width, opacity)
     series1 = []
     for yr in sorted(sel_years1):
         df_yr = df1_g[df1_g["year"] == yr]
+        w, op = _year_style(yr)
         if merge_cnt1 and merge_item1:
-            series1.append(_series1(df_yr, ["합산"], yr))
+            series1.append((f"합산 / {yr}", df_yr, year_color[yr], "solid", w, op))
         elif merge_cnt1:
             for it in items1:
-                series1.append(_series1(df_yr[df_yr["품명"] == it], [it], yr))
+                series1.append((f"{it} / {yr}", df_yr[df_yr["품명"] == it],
+                                 item_color[it], "solid", w, op))
         elif merge_item1:
             for c in countries1:
-                series1.append(_series1(df_yr[df_yr["country"] == c], [c], yr))
+                series1.append((f"{c} / {yr}", df_yr[df_yr["country"] == c],
+                                 cnt_color[c], "solid", w, op))
         else:
             for c in countries1:
                 for it in items1:
-                    series1.append(_series1(
-                        df_yr[(df_yr["country"] == c) & (df_yr["품명"] == it)], [c, it], yr
+                    series1.append((
+                        f"{c} / {it} / {yr}",
+                        df_yr[(df_yr["country"] == c) & (df_yr["품명"] == it)],
+                        cnt_color[c], item_dash[it], w, op,
                     ))
 
     fig1 = go.Figure()
     max_yr = max(sel_years1)
-    for label, sub, color in series1:
+    for label, sub, color, dash, width, opacity in series1:
         sub = sub.sort_values("month")
-        yr  = int(label.rsplit("/", 1)[-1].strip())
-        is_latest = (yr == max_yr)
+        sub = sub[sub["ton"].notna()]
+        if sub.empty:
+            continue
+        is_latest = (str(max_yr) in label.rsplit("/", 1)[-1])
         vals = [sub.set_index("month")["ton"].get(m) for m in MONTHS]
         text = [f"{v:,.1f}t" if pd.notna(v) and v is not None else "" for v in vals] if is_latest else []
         fig1.add_trace(go.Scatter(
             x=MONTH_LABELS, y=vals, name=label,
             mode="lines+markers+text" if is_latest else "lines+markers",
-            line=dict(color=color, width=3 if is_latest else 1.8),
+            line=dict(color=color, width=width, dash=dash),
             marker=dict(size=6 if is_latest else 4, color=color),
             text=text, textposition="top center", textfont=dict(size=10, color=color),
-            opacity=1.0 if is_latest else 0.75,
+            opacity=opacity,
         ))
 
     avg_val = df1_g["ton"].mean(skipna=True)
