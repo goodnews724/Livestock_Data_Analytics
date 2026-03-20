@@ -434,40 +434,42 @@ else:
 # ③ 커스텀 그룹 비교 그래프
 # ══════════════════════════════════════════════════════════════════════════
 
-section("③ 커스텀 그룹 비교  (국가·품목 복수 선택 + 합산 + 이동평균)")
+section("③ 커스텀 그룹 비교  (연도·국가·품목 복수 선택 + 합산)")
 
-c1, c2, c3, c4 = st.columns([1, 1, 2, 2])
+c1, c2 = st.columns([1, 3])
 sp3    = c1.selectbox("구분", SPECIES_OPTS, key="sp3")
 df3_sp = df_all[df_all["species"] == sp3]
 
-all_yrs3 = sorted(df3_sp["year"].dropna().unique(), reverse=True)
-year3    = c2.selectbox("기준 연도", all_yrs3, key="year3")
-df3_yr   = df3_sp[df3_sp["year"] == year3]
+all_yrs3     = sorted(df3_sp["year"].dropna().unique(), reverse=True)
+default_yrs3 = all_yrs3[:min(3, len(all_yrs3))]
+sel_years3   = c2.multiselect("연도 선택", all_yrs3, default=default_yrs3, key="years3")
 
-cnt3_all   = sorted(df3_yr["country"].dropna().unique())
-items3_all = sorted(df3_yr["품명"].dropna().unique())
+df3_filt   = df3_sp[df3_sp["year"].isin(sel_years3)] if sel_years3 else df3_sp
+cnt3_all   = sorted(df3_filt["country"].dropna().unique())
+items3_all = sorted(df3_filt["품명"].dropna().unique())
 
 default_cnt3  = [DEFAULT_COUNTRY] if DEFAULT_COUNTRY in cnt3_all else cnt3_all[:1]
 default_item3 = [DEFAULT_ITEM]    if DEFAULT_ITEM    in items3_all else items3_all[:1]
 
+c3, c4 = st.columns([1, 1])
 countries3  = c3.multiselect("국가", cnt3_all, default=default_cnt3, key="cnt3")
 merge_cnt3  = c3.checkbox("국가 합산", value=False, key="merge_cnt3")
 items3      = c4.multiselect("품목", items3_all, default=default_item3, key="items3")
 merge_item3 = c4.checkbox("품목 합산", value=False, key="merge_item3")
 
-if not countries3 or not items3:
-    st.info("국가와 품목을 각각 1개 이상 선택하세요.")
+if not sel_years3 or not countries3 or not items3:
+    st.info("연도, 국가, 품목을 각각 1개 이상 선택하세요.")
 else:
     mask3 = (
         (df_all["species"] == sp3) &
-        (df_all["year"] == year3) &
+        (df_all["year"].isin(sel_years3)) &
         (df_all["country"].isin(countries3)) &
         (df_all["품명"].isin(items3))
     )
     df3_raw = df_all[mask3].copy()
 
-    # 합산 여부에 따라 그룹 키 결정
-    group_keys = ["month"]
+    # 합산 여부에 따라 그룹 키 결정 (연도는 항상 분리)
+    group_keys = ["year", "month"]
     if not merge_cnt3:
         group_keys.append("country")
     if not merge_item3:
@@ -475,28 +477,30 @@ else:
 
     df3_g = df3_raw.groupby(group_keys)["ton"].sum(min_count=1).reset_index()
 
-    def hex_rgba(hex_color: str, alpha: float) -> str:
-        h = hex_color.lstrip("#")
-        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
-        return f"rgba({r},{g},{b},{alpha})"
+    # 시리즈 목록 구성 — 연도별로 색상 할당
+    year_color3 = {yr: YEAR_PALETTE[i % len(YEAR_PALETTE)] for i, yr in enumerate(sorted(sel_years3))}
 
-    # 시리즈 목록 구성
-    if merge_cnt3 and merge_item3:
-        series_list = [("합산", df3_g, PALETTE[0])]
-    elif merge_cnt3:
-        series_list = [(it, df3_g[df3_g["품명"] == it], PALETTE[i % len(PALETTE)])
-                       for i, it in enumerate(items3)]
-    elif merge_item3:
-        series_list = [(c, df3_g[df3_g["country"] == c], PALETTE[i % len(PALETTE)])
-                       for i, c in enumerate(countries3)]
-    else:
-        combos = [(c, it) for c in countries3 for it in items3]
-        series_list = [
-            (f"{c} / {it}",
-             df3_g[(df3_g["country"] == c) & (df3_g["품명"] == it)],
-             PALETTE[i % len(PALETTE)])
-            for i, (c, it) in enumerate(combos)
-        ]
+    def _series(df_sub, label_parts: list, yr: int) -> tuple:
+        label = " / ".join(label_parts + [str(yr)])
+        color = year_color3[yr]
+        return label, df_sub, color
+
+    series_list = []
+    for yr in sorted(sel_years3):
+        df_yr = df3_g[df3_g["year"] == yr]
+        if merge_cnt3 and merge_item3:
+            series_list.append(_series(df_yr, ["합산"], yr))
+        elif merge_cnt3:
+            for it in items3:
+                series_list.append(_series(df_yr[df_yr["품명"] == it], [it], yr))
+        elif merge_item3:
+            for c in countries3:
+                series_list.append(_series(df_yr[df_yr["country"] == c], [c], yr))
+        else:
+            for c in countries3:
+                for it in items3:
+                    sub = df_yr[(df_yr["country"] == c) & (df_yr["품명"] == it)]
+                    series_list.append(_series(sub, [c, it], yr))
 
     fig3 = go.Figure()
     for label, sub, color in series_list:
