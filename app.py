@@ -44,6 +44,19 @@ PALETTE = [
     "#dd6b20", "#319795", "#b83280", "#2b6cb0", "#276749",
 ]
 
+YEAR_PALETTE = [
+    "#e53e3e", "#3182ce", "#38a169", "#d69e2e", "#805ad5",
+    "#dd6b20", "#319795", "#b83280",
+]
+
+DEFAULT_SPECIES = "우육"
+DEFAULT_COUNTRY = "미국"
+DEFAULT_ITEM    = "갈비"
+
+
+def _idx(lst: list, val: str) -> int:
+    return lst.index(val) if val in lst else 0
+
 MONTHS       = list(range(1, 13))
 MONTH_LABELS = [f"{m:02d}" for m in MONTHS]
 MONTH_COLS   = [f"{m}월" for m in MONTHS]   # 요약 시트 컬럼명
@@ -167,6 +180,8 @@ def _load_summary_sheet(sheet_name: str, species: str) -> pd.DataFrame:
     df["country"] = df["country"].str.strip().map(
         lambda x: COUNTRY_ALIASES.get(x, x)
     )
+    df = df[df["country"] != "소계"].copy()
+    df = df[~df["country"].str.contains(r"\(냉장\)", regex=True, na=False)].copy()
 
     for c in month_cols_present:
         df[c] = pd.to_numeric(
@@ -247,26 +262,29 @@ SPECIES_OPTS = ["돈육", "우육"]
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# ① 연도별 월별 비교 (최근 5년)
+# ① 연도별 월별 비교 (연도 선택)
 # ══════════════════════════════════════════════════════════════════════════
 
-section("① 연도별 월별 비교  (최근 5년 · 올해=빨강, 작년=파랑, 나머지=회색)")
+section("① 연도별 월별 비교  (비교할 연도 선택)")
 
 c1, c2, c3 = st.columns(3)
-sp1    = c1.selectbox("구분", SPECIES_OPTS, key="sp1")
+sp1    = c1.selectbox("구분", SPECIES_OPTS, index=_idx(SPECIES_OPTS, DEFAULT_SPECIES), key="sp1")
 df1_sp = df_all[df_all["species"] == sp1]
 cnt1   = sorted(df1_sp["country"].dropna().unique())
-cntry1 = c2.selectbox("국가", cnt1, key="cntry1")
+cntry1 = c2.selectbox("국가", cnt1, index=_idx(cnt1, DEFAULT_COUNTRY), key="cntry1")
 df1_c  = df1_sp[df1_sp["country"] == cntry1]
 items1 = sorted(df1_c["품명"].dropna().unique())
-item1  = c3.selectbox("품목", items1, key="item1")
+item1  = c3.selectbox("품목", items1, index=_idx(items1, DEFAULT_ITEM), key="item1")
 
-years5 = list(range(TODAY_YEAR - 4, TODAY_YEAR + 1))
-mask1  = (
+all_years1   = sorted(df_all["year"].dropna().unique(), reverse=True)
+default_yrs1 = all_years1[:min(5, len(all_years1))]
+sel_years1   = st.multiselect("비교할 연도 선택", all_years1, default=default_yrs1, key="years1")
+
+mask1 = (
     (df_all["species"] == sp1) &
     (df_all["country"] == cntry1) &
     (df_all["품명"] == item1) &
-    (df_all["year"].isin(years5))
+    (df_all["year"].isin(sel_years1))
 )
 df1_g = (
     df_all[mask1]
@@ -275,42 +293,31 @@ df1_g = (
     .reset_index()
 )
 
-avg_val = df1_g["ton"].mean(skipna=True) if not df1_g.empty else 0
+sorted_sel  = sorted(sel_years1, reverse=True)
+year_color  = {yr: YEAR_PALETTE[i % len(YEAR_PALETTE)] for i, yr in enumerate(sorted_sel)}
+avg_val     = df1_g["ton"].mean(skipna=True) if not df1_g.empty else None
 
 fig1 = go.Figure()
 
-for i, yr in enumerate(sorted(y for y in years5 if y not in (TODAY_YEAR, LAST_YEAR))):
+for yr in sorted(sel_years1):
     sub  = df1_g[df1_g["year"] == yr].set_index("month")
     vals = [sub["ton"].get(m) for m in MONTHS]
+    color = year_color[yr]
+    is_latest = (yr == max(sel_years1)) if sel_years1 else False
+    text = [f"{v:,.1f}t" if pd.notna(v) and v is not None else "" for v in vals] if is_latest else []
     fig1.add_trace(go.Scatter(
         x=MONTH_LABELS, y=vals, name=str(yr),
-        mode="lines+markers",
-        line=dict(color=GRAY_SHADES[i % 3], width=1.5),
-        marker=dict(size=4), opacity=0.7,
+        mode="lines+markers+text" if is_latest else "lines+markers",
+        line=dict(color=color, width=3 if is_latest else 1.8),
+        marker=dict(size=6 if is_latest else 4, color=color),
+        text=text, textposition="top center", textfont=dict(size=10, color=color),
+        opacity=1.0 if is_latest else 0.75,
     ))
 
-sub  = df1_g[df1_g["year"] == LAST_YEAR].set_index("month")
-vals = [sub["ton"].get(m) for m in MONTHS]
-fig1.add_trace(go.Scatter(
-    x=MONTH_LABELS, y=vals, name=str(LAST_YEAR),
-    mode="lines+markers",
-    line=dict(color=COLOR_LAST, width=2.5), marker=dict(size=5),
-))
-
-sub  = df1_g[df1_g["year"] == TODAY_YEAR].set_index("month")
-vals = [sub["ton"].get(m) for m in MONTHS]
-text = [f"{v:,.1f}t" if pd.notna(v) and v is not None else "" for v in vals]
-fig1.add_trace(go.Scatter(
-    x=MONTH_LABELS, y=vals, name=str(TODAY_YEAR),
-    mode="lines+markers+text",
-    line=dict(color=COLOR_THIS, width=3), marker=dict(size=6, color=COLOR_THIS),
-    text=text, textposition="top center", textfont=dict(size=10, color=COLOR_THIS),
-))
-
-if pd.notna(avg_val):
+if avg_val is not None and pd.notna(avg_val):
     fig1.add_hline(
         y=avg_val, line_dash="dot", line_color=COLOR_AVG, line_width=1.5,
-        annotation_text=f"5년평균 {avg_val:,.1f}t",
+        annotation_text=f"선택평균 {avg_val:,.1f}t",
         annotation_position="bottom right",
         annotation_font_size=10, annotation_font_color=COLOR_AVG,
     )
@@ -320,8 +327,7 @@ fig1.update_layout(
     xaxis=dict(tickmode="array", tickvals=MONTH_LABELS, ticktext=MONTH_LABELS,
                title="월", title_font_size=14, tickfont_size=13, fixedrange=True),
     yaxis=dict(title="검역량 (톤)", title_font_size=14, tickfont_size=13, fixedrange=True),
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0,
-                font_size=13),
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, font_size=13),
     font=dict(size=13),
     margin=dict(l=0, r=10, t=50, b=30),
     height=450,
@@ -340,15 +346,35 @@ with st.expander(f"🔍 원본 데이터 확인 ({mask1.sum()}행)", expanded=Fa
 # ② 추이 그래프
 # ══════════════════════════════════════════════════════════════════════════
 
-section("② 추이 그래프  (최근 3개월 / 1년 / 5년)")
+section("② 추이 그래프  (최근 3개월 / 1년 / 5년 / 직접 설정)")
 
 c1, c2, c3, c4 = st.columns([1, 1, 1, 1])
-sp2    = c1.selectbox("구분", SPECIES_OPTS, key="sp2")
+sp2    = c1.selectbox("구분", SPECIES_OPTS, index=_idx(SPECIES_OPTS, DEFAULT_SPECIES), key="sp2")
 df2_sp = df_all[df_all["species"] == sp2]
-cntry2 = c2.selectbox("국가", sorted(df2_sp["country"].dropna().unique()), key="cntry2")
+cnt2   = sorted(df2_sp["country"].dropna().unique())
+cntry2 = c2.selectbox("국가", cnt2, index=_idx(cnt2, DEFAULT_COUNTRY), key="cntry2")
 df2_c  = df2_sp[df2_sp["country"] == cntry2]
-item2  = c3.selectbox("품목", sorted(df2_c["품명"].dropna().unique()), key="item2")
-period2 = c4.radio("기간", ["최근 3개월", "최근 1년", "최근 5년"], key="period2")
+items2 = sorted(df2_c["품명"].dropna().unique())
+item2  = c3.selectbox("품목", items2, index=_idx(items2, DEFAULT_ITEM), key="item2")
+period2 = c4.radio("기간", ["최근 3개월", "최근 1년", "최근 5년", "직접 설정"], key="period2")
+
+if period2 == "직접 설정":
+    dr = st.date_input(
+        "기간 범위",
+        value=(date(TODAY_YEAR - 2, 1, 1), date.today()),
+        min_value=date(2010, 1, 1),
+        max_value=date.today(),
+        key="dr2",
+    )
+    if isinstance(dr, (list, tuple)) and len(dr) == 2:
+        first_p = pd.Timestamp(dr[0].replace(day=1))
+        last_p  = pd.Timestamp(dr[1].replace(day=1))
+    else:
+        first_p = last_p = pd.Timestamp(date.today().replace(day=1))
+else:
+    last_p   = pd.Timestamp(date.today().replace(day=1))
+    n_months = {"최근 3개월": 3, "최근 1년": 12, "최근 5년": 60}[period2]
+    first_p  = last_p - pd.DateOffset(months=n_months - 1)
 
 mask2 = (
     (df_all["species"] == sp2) &
@@ -363,15 +389,8 @@ df2_g = (
 )
 
 if not df2_g.empty:
-    today_p  = pd.Timestamp(date.today().replace(day=1))   # 이번 달 1일
-    n_months = {"최근 3개월": 3, "최근 1년": 12, "최근 5년": 60}[period2]
-    first_p  = today_p - pd.DateOffset(months=n_months - 1)
-    df2_g    = df2_g[df2_g["period"] >= first_p]
-
-    # 전체 월 범위 생성 → 빈 월은 NaN (datetime 축 정렬용)
-    full_range = pd.DataFrame({
-        "period": pd.date_range(first_p, today_p, freq="MS")
-    })
+    df2_g = df2_g[(df2_g["period"] >= first_p) & (df2_g["period"] <= last_p)]
+    full_range = pd.DataFrame({"period": pd.date_range(first_p, last_p, freq="MS")})
     df2_g = full_range.merge(df2_g, on="period", how="left")
     df2_g["label"] = df2_g["period"].dt.strftime("%y.%m")
 
@@ -383,18 +402,17 @@ else:
         x=df2_g["period"], y=df2_g["ton"],
         mode="lines+markers",
         line=dict(color=COLOR_LAST, width=2.5), marker=dict(size=5),
-        connectgaps=False,          # 데이터 없는 월은 선 끊김
+        connectgaps=False,
         fill="tozeroy", fillcolor="rgba(49,130,206,0.08)",
         name="검역량",
         hovertemplate="%{x|%y.%m}  %{y:,.1f}t<extra></extra>",
     ))
-    all_labels = df2_g["label"].tolist()
     fig2.update_layout(
         **LAYOUT_BASE,
         xaxis=dict(
             tickmode="array",
             tickvals=df2_g["period"].tolist(),
-            ticktext=all_labels,
+            ticktext=df2_g["label"].tolist(),
             tickangle=-45,
             title="날짜 (YY.MM)",
             fixedrange=True,
@@ -408,85 +426,101 @@ else:
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# ③ 비교 그래프
+# ③ 커스텀 그룹 비교 그래프
 # ══════════════════════════════════════════════════════════════════════════
 
-section("③ 비교 그래프  (국가·품목 복수 선택 → 월별 비교)")
+section("③ 커스텀 그룹 비교  (국가·품목 복수 선택 + 합산 + 이동평균)")
 
 c1, c2, c3, c4 = st.columns([1, 1, 2, 2])
-sp3_opts = ["전체"] + SPECIES_OPTS
-sp3      = c1.selectbox("구분", sp3_opts, key="sp3")
-df3_sp   = df_all if sp3 == "전체" else df_all[df_all["species"] == sp3]
+sp3    = c1.selectbox("구분", SPECIES_OPTS, index=_idx(SPECIES_OPTS, DEFAULT_SPECIES), key="sp3")
+df3_sp = df_all[df_all["species"] == sp3]
 
-all_yrs = sorted(df3_sp["year"].dropna().unique(), reverse=True)
-year3   = c2.selectbox("년도", all_yrs, key="year3")
-df3_yr  = df3_sp[df3_sp["year"] == year3]
+all_yrs3 = sorted(df3_sp["year"].dropna().unique(), reverse=True)
+year3    = c2.selectbox("기준 연도", all_yrs3, key="year3")
+df3_yr   = df3_sp[df3_sp["year"] == year3]
 
 cnt3_all   = sorted(df3_yr["country"].dropna().unique())
 items3_all = sorted(df3_yr["품명"].dropna().unique())
 
-countries3 = c3.multiselect(
-    "국가 (1개 이상)", cnt3_all,
-    default=cnt3_all[:2] if len(cnt3_all) >= 2 else cnt3_all,
-    key="cnt3",
-)
-items3 = c4.multiselect(
-    "품목 (1개 이상)", items3_all,
-    default=items3_all[:2] if len(items3_all) >= 2 else items3_all,
-    key="items3",
-)
+default_cnt3  = [DEFAULT_COUNTRY] if DEFAULT_COUNTRY in cnt3_all else cnt3_all[:1]
+default_item3 = [DEFAULT_ITEM]    if DEFAULT_ITEM    in items3_all else items3_all[:1]
+
+countries3  = c3.multiselect("국가", cnt3_all, default=default_cnt3, key="cnt3")
+merge_cnt3  = c3.checkbox("국가 합산", value=False, key="merge_cnt3")
+items3      = c4.multiselect("품목", items3_all, default=default_item3, key="items3")
+merge_item3 = c4.checkbox("품목 합산", value=False, key="merge_item3")
+
+ma_col, ma_win_col, _ = st.columns([1, 1, 4])
+use_ma = ma_col.checkbox("이동평균 추가", value=False, key="use_ma3")
+ma_win = int(ma_win_col.number_input("N개월", min_value=2, max_value=24, value=3, step=1, key="ma_win3")) if use_ma else 3
 
 if not countries3 or not items3:
     st.info("국가와 품목을 각각 1개 이상 선택하세요.")
 else:
     mask3 = (
+        (df_all["species"] == sp3) &
         (df_all["year"] == year3) &
         (df_all["country"].isin(countries3)) &
         (df_all["품명"].isin(items3))
     )
-    if sp3 != "전체":
-        mask3 &= (df_all["species"] == sp3)
+    df3_raw = df_all[mask3].copy()
 
-    df3_g = (
-        df_all[mask3]
-        .groupby(["month", "country", "품명"])["ton"]
-        .sum(min_count=1)
-        .reset_index()
-    )
+    # 합산 여부에 따라 그룹 키 결정
+    group_keys = ["month"]
+    if not merge_cnt3:
+        group_keys.append("country")
+    if not merge_item3:
+        group_keys.append("품명")
 
-    # 국가별 기준색 할당, 품목별 투명도 단계 (모두 실선, 점점 연하게)
+    df3_g = df3_raw.groupby(group_keys)["ton"].sum(min_count=1).reset_index()
+
     def hex_rgba(hex_color: str, alpha: float) -> str:
         h = hex_color.lstrip("#")
         r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
         return f"rgba({r},{g},{b},{alpha})"
 
-    country_base = {c: PALETTE[i % len(PALETTE)] for i, c in enumerate(countries3)}
-    # 품목 수에 상관없이 1.0 → 0.35 범위를 균등 분배
-    n_items = len(items3)
-    if n_items == 1:
-        alphas = [1.0]
+    # 시리즈 목록 구성
+    if merge_cnt3 and merge_item3:
+        series_list = [("합산", df3_g, PALETTE[0])]
+    elif merge_cnt3:
+        series_list = [(it, df3_g[df3_g["품명"] == it], PALETTE[i % len(PALETTE)])
+                       for i, it in enumerate(items3)]
+    elif merge_item3:
+        series_list = [(c, df3_g[df3_g["country"] == c], PALETTE[i % len(PALETTE)])
+                       for i, c in enumerate(countries3)]
     else:
-        alphas = [round(1.0 - 0.65 * j / (n_items - 1), 2) for j in range(n_items)]
-    item_alpha = {it: alphas[j] for j, it in enumerate(items3)}
+        combos = [(c, it) for c in countries3 for it in items3]
+        series_list = [
+            (f"{c} / {it}",
+             df3_g[(df3_g["country"] == c) & (df3_g["품명"] == it)],
+             PALETTE[i % len(PALETTE)])
+            for i, (c, it) in enumerate(combos)
+        ]
 
-    fig3  = go.Figure()
-    combos = [(c, it) for c in countries3 for it in items3]
-
-    for c, it in combos:
-        sub = df3_g[(df3_g["country"] == c) & (df3_g["품명"] == it)].sort_values("month")
+    fig3 = go.Figure()
+    for label, sub, color in series_list:
+        sub = sub.sort_values("month")
         sub = sub[sub["ton"].notna()]
         if sub.empty:
             continue
-        color = hex_rgba(country_base[c], item_alpha[it])
-        width = 2.8 if item_alpha[it] == 1.0 else 2.0
+        xs = [f"{m:02d}" for m in sub["month"]]
         fig3.add_trace(go.Scatter(
-            x=[f"{m:02d}" for m in sub["month"]], y=sub["ton"],
-            name=f"{c} / {it}",
+            x=xs, y=sub["ton"],
+            name=label,
             mode="lines+markers",
-            line=dict(color=color, width=width),
+            line=dict(color=color, width=2.5),
             marker=dict(size=5, color=color),
-            hovertemplate=f"{c} / {it}<br>%{{x}}월: %{{y:,.1f}}t<extra></extra>",
+            hovertemplate=f"{label}<br>%{{x}}월: %{{y:,.1f}}t<extra></extra>",
         ))
+        if use_ma and len(sub) >= ma_win:
+            ma_vals = sub["ton"].rolling(ma_win, min_periods=ma_win).mean()
+            fig3.add_trace(go.Scatter(
+                x=xs, y=ma_vals,
+                name=f"{label} {ma_win}개월MA",
+                mode="lines",
+                line=dict(color=color, width=1.5, dash="dot"),
+                hovertemplate=f"{label} {ma_win}MA<br>%{{x}}월: %{{y:,.1f}}t<extra></extra>",
+            ))
 
     if not fig3.data:
         st.info("해당 조건의 데이터가 없습니다.")
@@ -499,6 +533,6 @@ else:
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
             font=dict(size=11),
             margin=dict(l=0, r=10, t=60, b=30),
-            height=430,
+            height=450,
         )
         st.plotly_chart(fig3, width="stretch", config=CFG)
