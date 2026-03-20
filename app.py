@@ -273,7 +273,7 @@ for _k, _v in [("sp1", DEFAULT_SPECIES), ("sp2", DEFAULT_SPECIES), ("sp3", DEFAU
 section("① 연도별 월별 비교  (비교할 연도 선택)")
 
 c1, c2, c3 = st.columns(3)
-sp1    = c1.selectbox("구분", SPECIES_OPTS, index=_idx(SPECIES_OPTS, DEFAULT_SPECIES), key="sp1")
+sp1    = c1.selectbox("구분", SPECIES_OPTS, key="sp1")
 df1_sp = df_all[df_all["species"] == sp1]
 cnt1   = sorted(df1_sp["country"].dropna().unique())
 cntry1 = c2.selectbox("국가", cnt1, index=_idx(cnt1, DEFAULT_COUNTRY), key="cntry1")
@@ -354,7 +354,7 @@ with st.expander(f"🔍 원본 데이터 확인 ({mask1.sum()}행)", expanded=Fa
 section("② 추이 그래프  (최근 3개월 / 1년 / 5년 / 직접 설정)")
 
 c1, c2, c3, c4 = st.columns([1, 1, 1, 1])
-sp2    = c1.selectbox("구분", SPECIES_OPTS, index=_idx(SPECIES_OPTS, DEFAULT_SPECIES), key="sp2")
+sp2    = c1.selectbox("구분", SPECIES_OPTS, key="sp2")
 df2_sp = df_all[df_all["species"] == sp2]
 cnt2   = sorted(df2_sp["country"].dropna().unique())
 cntry2 = c2.selectbox("국가", cnt2, index=_idx(cnt2, DEFAULT_COUNTRY), key="cntry2")
@@ -437,7 +437,7 @@ else:
 section("③ 커스텀 그룹 비교  (국가·품목 복수 선택 + 합산 + 이동평균)")
 
 c1, c2, c3, c4 = st.columns([1, 1, 2, 2])
-sp3    = c1.selectbox("구분", SPECIES_OPTS, index=_idx(SPECIES_OPTS, DEFAULT_SPECIES), key="sp3")
+sp3    = c1.selectbox("구분", SPECIES_OPTS, key="sp3")
 df3_sp = df_all[df_all["species"] == sp3]
 
 all_yrs3 = sorted(df3_sp["year"].dropna().unique(), reverse=True)
