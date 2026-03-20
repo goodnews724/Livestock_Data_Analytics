@@ -198,7 +198,6 @@ def _load_summary_sheet(sheet_name: str, species: str) -> pd.DataFrame:
         lambda x: COUNTRY_ALIASES.get(x, x)
     )
     df = df[df["country"] != "소계"].copy()
-    df = df[~df["country"].str.contains(r"\(냉장\)", regex=True, na=False)].copy()
 
     for c in month_cols_present:
         df[c] = pd.to_numeric(
