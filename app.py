@@ -344,8 +344,8 @@ else:
     varying = [d for d, m in [("country", multi_cnt), ("item", multi_item), ("year", multi_yr)] if m]
     n_dims     = len(varying)
     color_dim   = varying[0] if n_dims >= 1 else None
-    style_dim   = varying[1] if n_dims >= 2 else None
-    opacity_dim = varying[2] if n_dims >= 3 else None
+    opacity_dim = varying[1] if n_dims >= 2 else None
+    style_dim   = varying[2] if n_dims >= 3 else None
 
     year_color = _year_colors(sel_years1)
     cnt_color  = {c:  PALETTE[i % len(PALETTE)]     for i, c  in enumerate(countries1)}
