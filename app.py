@@ -337,43 +337,69 @@ else:
         group_keys1.append("품명")
     df1_g = df1_raw.groupby(group_keys1)["ton"].sum(min_count=1).reset_index()
 
-    year_color   = _year_colors(sel_years1)
-    cnt_color    = {c: PALETTE[i % len(PALETTE)] for i, c in enumerate(countries1)}
-    item_color   = {it: PALETTE[i % len(PALETTE)] for i, it in enumerate(items1)}
-    item_dash    = {it: LINE_DASHES[i % len(LINE_DASHES)] for i, it in enumerate(items1)}
+    # ── 차원별 인코딩 자동 결정 ──────────────────────────────────────────
+    multi_cnt  = len(countries1) > 1 and not merge_cnt1
+    multi_item = len(items1) > 1    and not merge_item1
+    multi_yr   = len(sel_years1) > 1
+    varying = [d for d, m in [("country", multi_cnt), ("item", multi_item), ("year", multi_yr)] if m]
+    n_dims     = len(varying)
+    color_dim   = varying[0] if n_dims >= 1 else None
+    style_dim   = varying[1] if n_dims >= 2 else None
+    opacity_dim = varying[2] if n_dims >= 3 else None
 
-    # (label, df_sub, color, dash, width, opacity)
-    series1 = []
-    for yr in sorted(sel_years1):
+    year_color = _year_colors(sel_years1)
+    cnt_color  = {c:  PALETTE[i % len(PALETTE)]     for i, c  in enumerate(countries1)}
+    item_color = {it: PALETTE[i % len(PALETTE)]     for i, it in enumerate(items1)}
+    cnt_dash   = {c:  LINE_DASHES[i % len(LINE_DASHES)] for i, c  in enumerate(countries1)}
+    item_dash  = {it: LINE_DASHES[i % len(LINE_DASHES)] for i, it in enumerate(items1)}
+    yr_sorted  = sorted(sel_years1)
+    yr_dash    = {yr: LINE_DASHES[i % len(LINE_DASHES)] for i, yr in enumerate(yr_sorted)}
+
+    def _enc(yr, c, it):
+        """(color, dash, width, opacity)"""
+        def _col():
+            if color_dim == "country": return cnt_color.get(c, PALETTE[0])
+            if color_dim == "item":    return item_color.get(it, PALETTE[0])
+            if color_dim == "year":    return year_color.get(yr, PALETTE[0])
+            return PALETTE[0]
+        def _dash():
+            if style_dim == "country": return cnt_dash.get(c, "solid")
+            if style_dim == "item":    return item_dash.get(it, "solid")
+            if style_dim == "year":    return yr_dash.get(yr, "solid")
+            return "solid"
+        w, op = _year_style(yr) if opacity_dim == "year" else (2.5, 0.9)
+        return _col(), _dash(), w, op
+
+    # ── 시리즈 빌딩 ────────────────────────────────────────────────────────
+    series1 = []  # (label, df_sub, color, dash, width, opacity, yr)
+    cnt_list  = ["합산"] if merge_cnt1  else countries1
+    item_list = ["합산"] if merge_item1 else items1
+
+    for yr in yr_sorted:
         df_yr = df1_g[df1_g["year"] == yr]
-        w, op = _year_style(yr)
-        if merge_cnt1 and merge_item1:
-            series1.append((f"합산 / {yr}", df_yr, year_color[yr], "solid", w, op))
-        elif merge_cnt1:
-            for it in items1:
-                series1.append((f"{it} / {yr}", df_yr[df_yr["품명"] == it],
-                                 item_color[it], "solid", w, op))
-        elif merge_item1:
-            for c in countries1:
-                series1.append((f"{c} / {yr}", df_yr[df_yr["country"] == c],
-                                 cnt_color[c], "solid", w, op))
-        else:
-            for c in countries1:
-                for it in items1:
-                    series1.append((
-                        f"{c} / {it} / {yr}",
-                        df_yr[(df_yr["country"] == c) & (df_yr["품명"] == it)],
-                        cnt_color[c], item_dash[it], w, op,
-                    ))
+        for c in cnt_list:
+            for it in item_list:
+                if merge_cnt1 and merge_item1:
+                    sub = df_yr
+                elif merge_cnt1:
+                    sub = df_yr[df_yr["품명"] == it]
+                elif merge_item1:
+                    sub = df_yr[df_yr["country"] == c]
+                else:
+                    sub = df_yr[(df_yr["country"] == c) & (df_yr["품명"] == it)]
+                parts = ([c] if not merge_cnt1 else []) + ([it] if not merge_item1 else []) + [str(yr)]
+                label = " / ".join(parts)
+                color, dash, w, op = _enc(yr, c, it)
+                series1.append((label, sub, color, dash, w, op, yr))
 
     fig1 = go.Figure()
     max_yr = max(sel_years1)
-    for label, sub, color, dash, width, opacity in series1:
+    for label, sub, color, dash, width, opacity, yr in series1:
         sub = sub.sort_values("month")
         sub = sub[sub["ton"].notna()]
         if sub.empty:
             continue
-        is_latest = (str(max_yr) in label.rsplit("/", 1)[-1])
+        is_latest = (yr == max_yr)
         vals = [sub.set_index("month")["ton"].get(m) for m in MONTHS]
         text = [f"{v:,.1f}t" if pd.notna(v) and v is not None else "" for v in vals] if is_latest else []
         fig1.add_trace(go.Scatter(
