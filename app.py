@@ -314,9 +314,9 @@ default_cnt1  = [DEFAULT_COUNTRY] if DEFAULT_COUNTRY in cnt1_all else cnt1_all[:
 default_item1 = [DEFAULT_ITEM]    if DEFAULT_ITEM    in items1_all else items1_all[:1]
 
 r2c1, r2c2 = st.columns(2)
-countries1  = r2c1.multiselect("국가", cnt1_all, default=default_cnt1, key="cntry1")
+countries1  = r2c1.multiselect("국가", cnt1_all, default=default_cnt1, key="cnt1_ms")
 merge_cnt1  = r2c1.checkbox("국가 합산", value=False, key="merge_cnt1")
-items1      = r2c2.multiselect("품목", items1_all, default=default_item1, key="item1")
+items1      = r2c2.multiselect("품목", items1_all, default=default_item1, key="item1_ms")
 merge_item1 = r2c2.checkbox("품목 합산", value=False, key="merge_item1")
 
 if not sel_years1 or not countries1 or not items1:
