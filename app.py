@@ -57,6 +57,23 @@ DEFAULT_ITEM    = "갈비"
 def _idx(lst: list, val: str) -> int:
     return lst.index(val) if val in lst else 0
 
+
+_OTHER_PALETTE = ["#38a169", "#d69e2e", "#805ad5", "#dd6b20", "#319795", "#b83280", "#2b6cb0", "#276749"]
+
+def _year_colors(years: list) -> dict:
+    """올해=빨강, 작년=파랑, 나머지=기타 색상."""
+    result = {}
+    other_idx = 0
+    for yr in sorted(years, reverse=True):
+        if yr == TODAY_YEAR:
+            result[yr] = COLOR_THIS
+        elif yr == LAST_YEAR:
+            result[yr] = COLOR_LAST
+        else:
+            result[yr] = _OTHER_PALETTE[other_idx % len(_OTHER_PALETTE)]
+            other_idx += 1
+    return result
+
 MONTHS       = list(range(1, 13))
 MONTH_LABELS = [f"{m:02d}" for m in MONTHS]
 MONTH_COLS   = [f"{m}월" for m in MONTHS]   # 요약 시트 컬럼명
@@ -298,8 +315,7 @@ df1_g = (
     .reset_index()
 )
 
-sorted_sel  = sorted(sel_years1, reverse=True)
-year_color  = {yr: YEAR_PALETTE[i % len(YEAR_PALETTE)] for i, yr in enumerate(sorted_sel)}
+year_color  = _year_colors(sel_years1)
 avg_val     = df1_g["ton"].mean(skipna=True) if not df1_g.empty else None
 
 fig1 = go.Figure()
@@ -478,7 +494,7 @@ else:
     df3_g = df3_raw.groupby(group_keys)["ton"].sum(min_count=1).reset_index()
 
     # 시리즈 목록 구성 — 연도별로 색상 할당
-    year_color3 = {yr: YEAR_PALETTE[i % len(YEAR_PALETTE)] for i, yr in enumerate(sorted(sel_years3))}
+    year_color3 = _year_colors(sel_years3)
 
     def _series(df_sub, label_parts: list, yr: int) -> tuple:
         label = " / ".join(label_parts + [str(yr)])
