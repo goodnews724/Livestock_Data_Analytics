@@ -260,6 +260,11 @@ if df_all.empty:
 
 SPECIES_OPTS = ["돈육", "우육"]
 
+# 기본값 세션 초기화 (이전 세션 상태가 남아있어도 최초 방문 시 기본값 적용)
+for _k, _v in [("sp1", DEFAULT_SPECIES), ("sp2", DEFAULT_SPECIES), ("sp3", DEFAULT_SPECIES)]:
+    if _k not in st.session_state:
+        st.session_state[_k] = _v
+
 
 # ══════════════════════════════════════════════════════════════════════════
 # ① 연도별 월별 비교 (연도 선택)
@@ -450,10 +455,6 @@ merge_cnt3  = c3.checkbox("국가 합산", value=False, key="merge_cnt3")
 items3      = c4.multiselect("품목", items3_all, default=default_item3, key="items3")
 merge_item3 = c4.checkbox("품목 합산", value=False, key="merge_item3")
 
-ma_col, ma_win_col, _ = st.columns([1, 1, 4])
-use_ma = ma_col.checkbox("이동평균 추가", value=False, key="use_ma3")
-ma_win = int(ma_win_col.number_input("N개월", min_value=2, max_value=24, value=3, step=1, key="ma_win3")) if use_ma else 3
-
 if not countries3 or not items3:
     st.info("국가와 품목을 각각 1개 이상 선택하세요.")
 else:
@@ -512,15 +513,6 @@ else:
             marker=dict(size=5, color=color),
             hovertemplate=f"{label}<br>%{{x}}월: %{{y:,.1f}}t<extra></extra>",
         ))
-        if use_ma and len(sub) >= ma_win:
-            ma_vals = sub["ton"].rolling(ma_win, min_periods=ma_win).mean()
-            fig3.add_trace(go.Scatter(
-                x=xs, y=ma_vals,
-                name=f"{label} {ma_win}개월MA",
-                mode="lines",
-                line=dict(color=color, width=1.5, dash="dot"),
-                hovertemplate=f"{label} {ma_win}MA<br>%{{x}}월: %{{y:,.1f}}t<extra></extra>",
-            ))
 
     if not fig3.data:
         st.info("해당 조건의 데이터가 없습니다.")
